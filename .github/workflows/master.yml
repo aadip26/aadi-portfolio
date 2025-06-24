@@ -2,7 +2,8 @@ name: Deploy to EC2
 
 on:
   push:
-    branches: [master]  # <- changed from main to master
+    branches:
+      - master
 
 jobs:
   deploy:
@@ -10,25 +11,24 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.5.4
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.HOST }} >> ~/.ssh/known_hosts
 
       - name: Copy files to EC2
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} '
-            sudo mkdir -p /home/ubuntu/app &&
-            sudo chown ubuntu:ubuntu /home/ubuntu/app'
-          rsync -avz --exclude=".git" ./ ${{ secrets.USERNAME }}@${{ secrets.HOST }}:/home/ubuntu/app
+          rsync -avz --exclude node_modules ./ ubuntu@${{ secrets.HOST }}:/home/ubuntu/myapp
 
       - name: Install & Start PM2
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.USERNAME }}@${{ secrets.HOST }} << 'EOF'
-            cd /home/ubuntu/app
+          ssh ubuntu@${{ secrets.HOST }} << 'EOF'
+            cd /home/ubuntu/myapp
             npm install
-            pm2 start server.js --name portfolio --update-env
-            pm2 save
+            pm2 stop all || true
+            pm2 start npm --name "portfolio" -- start
           EOF
